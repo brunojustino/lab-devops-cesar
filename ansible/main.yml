@@ -1,0 +1,87 @@
+---
+- name: Start CI CD Nginx
+  hosts: all
+  become: yes
+  collections:
+    - ansible.builtin
+    - community.docker
+
+  tasks:
+    - name: Update and upgrade apt packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install required packages for Docker
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg
+        - lsb-release
+        - python3-pip
+        - virtualenv
+        - python3-setuptools
+        - software-properties-common
+        - python-pip
+        - docker-compose
+
+    - name: install dependences by pip
+      pip:
+        name:
+          - docker
+          - jsondiff
+          - pyyaml
+          - requests
+        state: present
+
+    - name: Add Dockers official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Set up the stable repository for Docker
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+
+    - name: install docker-ce and related packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: start docker
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: create docker compose to deploy stack
+      template:
+        src: "docker-compose.yml.j2"
+        dest: "/tmp/docker-compose.yml"
+
+    - name: Enable and start Docker services
+      systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - docker.service
+        - containerd.service
+
+    - name: deploy stack
+      docker_stack:
+        state: present
+        name: nginx
+        compose:
+          - /tmp/docker-compose.yml
